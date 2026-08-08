@@ -62,7 +62,7 @@
         <div class="status" id="status">Создайте или присоединитесь к комнате</div>
     </div>
     <div id="gameArea" style="display: none;">
-        <button onclick="loadRandomItems()">🔄 Новые предметы</button>
+        <button onclick="loadRandomItems()">Новые предметы</button>
         <div class="grid" id="grid"></div>
     </div>
 
@@ -86,7 +86,7 @@
         const ICON_SIZE = 48;
         const ICONS_PER_ROW = 30;
         const TOTAL_ITEMS = Object.keys(blocks_db).length;
-        
+
         let roomId = null;
         let currentItems = [];
 
@@ -98,17 +98,23 @@
         function createRoom() {
             roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
             document.getElementById('status').textContent = `Комната создана! Код: ${roomId}`;
-            initGame();
+            initGame(true);
         }
 
         function joinRoom() {
             roomId = document.getElementById('roomInput').value.toUpperCase().trim();
             if (!roomId) return alert('Введите код комнаты');
             document.getElementById('status').textContent = `Подключение к комнате ${roomId}...`;
-            initGame();
+            initGame(false);
         }
 
-        function initGame() {
+        function initGame(isCreator) {
+            document.getElementById('gameArea').style.display = 'block';
+            
+            if (isCreator) {
+                loadRandomItems();
+            }
+            
             database.ref(`rooms/${roomId}`).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (!data) return;
@@ -116,14 +122,6 @@
                 if (data.currentItems) {
                     currentItems = data.currentItems;
                     renderGrid(data.checkedItems || {});
-                }
-            });
-
-            document.getElementById('gameArea').style.display = 'block';
-            
-            database.ref(`rooms/${roomId}/currentItems`).once('value', (snapshot) => {
-                if (!snapshot.val()) {
-                    loadRandomItems();
                 }
             });
         }
