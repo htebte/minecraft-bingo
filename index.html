@@ -6,7 +6,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
     <style>
-        body { font-family: sans-serif; background: #1a1a1a; color: #fff; padding: 20px; }
+        body { font-family: sans-serif; background: #1a1a1a; color: #fff; padding: 0 0 20px 0; }
         button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #4CAF50; border: none; color: #fff; border-radius: 6px; margin: 5px; }
         button:hover { background: #45a049; }
         button:disabled { background: #666; cursor: not-allowed; }
@@ -52,12 +52,57 @@
         .player { background: #2d2d2d; padding: 10px; border-radius: 6px; }
         .player.active { border: 2px solid #4CAF50; }
         .player-name { font-weight: bold; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.show {
+            display: flex;
+        }
+        .modal-content {
+            background: #2d2d2d;
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 400px;
+        }
+        .modal-content p {
+            margin: 0 0 20px 0;
+            font-size: 16px;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .btn-cancel {
+            background: #666;
+        }
+        .btn-cancel:hover {
+            background: #555;
+        }
+        .btn-danger {
+            background: #f44336;
+        }
+        .btn-danger:hover {
+            background: #d32f2f;
+        }
     </style>
 </head>
 <body>
     <div class="room-info">
-        <div style="margin-bottom: 10px;">
-            <b>🎮 Режим бинго: </b>
+        <div style="margin-bottom: 20px;">
+            <b style="font-size: 24px;">📌Майнкрафт бинго</b>
+            <br><br>
             <button onclick="createRoom()">Создать комнату</button>
             <span style="margin: 0 10px;">или</span>
             <input type="text" id="roomInput" placeholder="Код комнаты" maxlength="6">
@@ -67,8 +112,18 @@
         <div class="players" id="players"></div>
     </div>
     <div id="gameArea" style="display: none;">
-        <button onclick="loadRandomItems()">Новые предметы</button>
+        <button onclick="confirmNewItems()">Обновить предметы</button>
         <div class="grid" id="grid"></div>
+    </div>
+
+    <div class="modal" id="confirmModal">
+        <div class="modal-content">
+            <p>Вы уверены?</p>
+            <div class="modal-buttons">
+                <button class="btn-danger" onclick="loadRandomItems()">Да</button>
+                <button class="btn-cancel" onclick="closeModal()">Нет</button>
+            </div>
+        </div>
     </div>
 
     <script src="blocks-db.js"></script>
@@ -102,11 +157,52 @@
         const crossImage = new Image();
         crossImage.src = CROSS_URL;
 
+        // Восстановление сессии при обновлении страницы
+        const savedRoomId = localStorage.getItem('bingo_roomId');
+        const savedPlayerId = localStorage.getItem('bingo_playerId');
+        const savedPlayerName = localStorage.getItem('bingo_playerName');
+
+        if (savedRoomId && savedPlayerId && savedPlayerName) {
+            roomId = savedRoomId;
+            playerId = savedPlayerId;
+            playerName = savedPlayerName;
+            document.getElementById('status').textContent = `Переподключение к комнате ${roomId}...`;
+            document.getElementById('gameArea').style.display = 'block';
+            
+            database.ref(`rooms/${roomId}/players/${playerId}`).update({
+                name: playerName,
+                online: true
+            });
+
+            database.ref(`rooms/${roomId}`).on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (!data) return;
+                
+                updatePlayers(data.players);
+                
+                if (data.currentItems) {
+                    currentItems = data.currentItems;
+                    renderGrid(data.checkedItems || {});
+                }
+            });
+
+            window.addEventListener('beforeunload', () => {
+                if (roomId && playerId) {
+                    database.ref(`rooms/${roomId}/players/${playerId}`).update({
+                        online: false
+                    });
+                }
+            });
+        }
+
         function createRoom() {
             roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
             playerId = 'player1';
             playerName = 'Игрок 1';
-            document.getElementById('status').textContent = `Комната создана! Код: ${roomId}`;
+            localStorage.setItem('bingo_roomId', roomId);
+            localStorage.setItem('bingo_playerId', playerId);
+            localStorage.setItem('bingo_playerName', playerName);
+            document.getElementById('status').textContent = `Комната создана. Код комнаты: ${roomId}`;
             initGame();
         }
 
@@ -117,7 +213,7 @@
             database.ref(`rooms/${roomId}/players`).once('value', (snapshot) => {
                 const players = snapshot.val();
                 if (!players) {
-                    alert('Комната не найдена!');
+                    alert('Комната не найдена');
                     return;
                 }
                 
@@ -128,6 +224,9 @@
                     playerId = 'player2';
                 }
                 playerName = 'Игрок 2';
+                localStorage.setItem('bingo_roomId', roomId);
+                localStorage.setItem('bingo_playerId', playerId);
+                localStorage.setItem('bingo_playerName', playerName);
                 document.getElementById('status').textContent = `Подключено к комнате ${roomId}`;
                 initGame();
             });
@@ -141,14 +240,20 @@
 
             window.addEventListener('beforeunload', () => {
                 if (roomId && playerId) {
-                    database.ref(`rooms/${roomId}/players/${playerId}`).remove();
+                    database.ref(`rooms/${roomId}/players/${playerId}`).update({
+                        online: false
+                    });
                 }
             });
 
             document.getElementById('gameArea').style.display = 'block';
             
             if (playerId === 'player1') {
-                loadRandomItems();
+                database.ref(`rooms/${roomId}/currentItems`).once('value', (snapshot) => {
+                    if (!snapshot.val()) {
+                        loadRandomItems();
+                    }
+                });
             }
             
             database.ref(`rooms/${roomId}`).on('value', (snapshot) => {
@@ -205,7 +310,16 @@
             return [...ids];
         }
 
+        function confirmNewItems() {
+            document.getElementById('confirmModal').classList.add('show');
+        }
+
+        function closeModal() {
+            document.getElementById('confirmModal').classList.remove('show');
+        }
+
         function loadRandomItems() {
+            closeModal();
             const ids = getRandomIds(25);
             database.ref(`rooms/${roomId}`).update({
                 currentItems: ids,
