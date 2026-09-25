@@ -303,9 +303,23 @@
         }
 
         function getRandomIds(count) {
+            // Собираем все доступные ID (без флага disabled)
+            const availableIds = [];
+            for (const id in blocks_db) {
+                if (!blocks_db[id].disabled) {
+                    availableIds.push(Number(id));
+                }
+            }
+            
+            // Если доступных меньше, чем нужно — вернём все
+            if (availableIds.length <= count) {
+                return availableIds;
+            }
+            
             const ids = new Set();
             while (ids.size < count) {
-                ids.add(Math.floor(Math.random() * TOTAL_ITEMS) + 1);
+                const randomIndex = Math.floor(Math.random() * availableIds.length);
+                ids.add(availableIds[randomIndex]);
             }
             return [...ids];
         }
